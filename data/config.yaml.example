@@ -1,0 +1,16 @@
+# Konfigurasi adder bot
+
+ADDER_BOT:
+  PHONE_NUM: <Client phone number>
+  API_ID: <Registered API ID>
+  API_HASH: <Registered API HASH>
+  APP_TITLE: <Registered APP Title>
+  SHORT_NAME: <Registered APP Short Name>
+
+
+# Konfigurasi telegram bot
+
+TELE_BOT:
+  BOT_NAME: <Bot name for telegram bot>
+  BOT_TOKEN: <Bot token from botfather>
+  BOT_DISPLAY_NAME: <Bot display name>
