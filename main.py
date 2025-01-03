@@ -1,4 +1,3 @@
-from modules.Environment import API_HASH, API_ID, PHONE_NUM
 from modules.Utils import get_logger
 from modules.TeleBot import TelegramBot
 

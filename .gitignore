@@ -4,3 +4,9 @@ log
 *pycache*
 venv
 *.session*
+test
+build
+dist
+main.spec
+demo
+database.db*
