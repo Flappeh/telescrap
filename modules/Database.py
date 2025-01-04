@@ -17,11 +17,22 @@ class TeleGroup(Model):
     class Meta:
         database = db
 
-
-# class Members(Model):
-#     phone = CharField()
-#     password = CharField()
-#     last_used =  DateTimeField(default=datetime.now())
-#     class Meta:
-#         database = db
+class TeleAccount(Model):
+    API_ID = CharField(unique=True)
+    API_HASH = CharField(unique=True)
+    PHONE_NUM = CharField()
+    is_active = BooleanField(default=False)
+    
+    class Meta:
+        database = db
+    
+class TeleMember(Model):
+    username = CharField(default="")
+    user_id = CharField()
+    access_hash = CharField()
+    group = CharField()
+    group_id = CharField()
+    
+    class Meta:
+        database = db
     

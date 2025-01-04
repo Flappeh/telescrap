@@ -8,7 +8,7 @@ from telegram.error import NetworkError
 from modules.MemberScraper import ScraperBot, get_scraper
 import sys
 import pytz
-from modules.Utils import get_logger, set_group_destination
+from modules.Utils import get_logger, set_group_destination, release_all_tele_account
 
 
 logger = get_logger(__name__)
@@ -32,8 +32,13 @@ class TelegramBot():
     async def get_message_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if self.check_time(update):
             return
-        scraper = await get_scraper()
-        await scraper.get_telegram_message()
+        if self.scraper == None:
+            self.scraper, auth = await get_scraper()
+            if auth.status != "done":
+                await update.message.reply_text("User hasn't logged in yet, please setup using /setup")
+                return ConversationHandler.END
+        await self.scraper.get_telegram_message()
+        del self.scraper
         await update.message.reply_text("Done",parse_mode=ParseMode.MARKDOWN_V2)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,7 +105,10 @@ Command yang dapat dilakukan:
             return
         
         if self.scraper == None:
-            self.scraper = await get_scraper()
+            self.scraper, auth = await get_scraper()
+            if auth.status != "done":
+                await update.message.reply_text("User hasn't logged in yet, please setup using /setup")
+                return ConversationHandler.END
             
         saved_dest = await self.scraper.check_saved_dest()
         
@@ -174,7 +182,10 @@ Command yang dapat dilakukan:
         if self.check_time(update):
             return
         if self.scraper == None:
-            self.scraper = await get_scraper()
+            self.scraper, auth = await get_scraper()
+            if auth.status != "done":
+                await update.message.reply_text("User hasn't logged in yet, please setup using /setup")
+                return ConversationHandler.END
         saved_dest = await self.scraper.check_saved_dest()
         context.user_data['scraper'] = self.scraper
         if saved_dest:
@@ -287,6 +298,7 @@ Command yang dapat dilakukan:
         context.application.updater.stop()
         context.application.stop()
         context.application.shutdown()
+        release_all_tele_account()
         sys.exit()
 
     def start_bot(self):

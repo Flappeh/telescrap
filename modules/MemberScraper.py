@@ -3,14 +3,17 @@ from telethon.tl.functions.messages import GetDialogsRequest, GetMessagesRequest
 from telethon.tl.types import InputPeerEmpty, InputPeerChannel, InputPeerUser, Channel
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 from telethon.tl.functions.channels import InviteToChannelRequest
+import pytz
 from .Database import TeleGroup
 import random
-from modules.Utils import get_logger, update_groups,  get_group_details, get_saved_dest
-from .Environment import API_ID, API_HASH, PHONE_NUM
+from modules.Utils import get_logger, update_groups,  get_group_details, get_saved_dest, get_tele_account, release_tele_account, get_main_tele_account
 import asyncio
 from time import sleep
+from datetime import datetime, timedelta
 
 logger = get_logger(__name__)
+
+utc = pytz.UTC
 
 class ScraperAuth():
     def __init__(self):
@@ -27,13 +30,30 @@ class ScraperAuth():
 
 class ScraperBot():
     def __init__(self):
-        self.API_ID = API_ID
-        self.API_HASH = API_HASH
-        self.PHONE_NUM = PHONE_NUM
+        self.API_ID = ""
+        self.API_HASH = ""
+        self.PHONE_NUM = ""
+        self.is_child = False
         self.client : TelegramClient = None
         self.sent_code = False
         self.auth_data : ScraperAuth = ScraperAuth()
+        self.init_account()
         
+    def __del__(self):
+        release_tele_account(self.API_ID)
+        
+    def init_account(self):
+        if self.is_child == False:
+            data = get_main_tele_account()
+            self.API_ID = data[0]
+            self.API_HASH = data[1]
+            self.PHONE_NUM = data[2]
+        else:
+            account = get_tele_account()
+            self.API_ID = account.API_ID
+            self.API_HASH = account.API_HASH
+            self.PHONE_NUM = account.PHONE_NUM
+    
     async def login_client(self, data: ScraperAuth):
         try:
             logger.debug(f"Got data: {data.to_dict()}")
@@ -46,12 +66,12 @@ class ScraperBot():
             return False
     
     async def create_client(self):
-        self.client = TelegramClient(PHONE_NUM, API_ID, API_HASH)
+        self.client = TelegramClient(self.PHONE_NUM, self.API_ID, self.API_HASH)
         await self.client.connect()
         if not await self.client.is_user_authorized():
             logger.debug("Client not logged in yet")
             if self.sent_code == False:
-                code_req = await asyncio.wait_for(self.client.send_code_request(PHONE_NUM),10)
+                code_req = await asyncio.wait_for(self.client.send_code_request(self.PHONE_NUM),10)
                 self.auth_data.code_hash = code_req.phone_code_hash
                 self.sent_code = True
                 self.auth_data.status = "sent_code"
@@ -107,17 +127,25 @@ class ScraperBot():
         # entity = await self.client.get_entity("777000")
         # async for message in self.client.iter_messages(entity, limit=200):
         #     print(message.text)
-        dialog = await self.client.get_entity()
+        found = False
+        delta = utc.localize(datetime.now()) - timedelta(hours=7,minutes=15)
+        message_data = ""
         async for dialog in self.client.iter_dialogs(limit=100):
             messages = await self.client.get_messages(dialog.entity, limit=10)
-            for message in messages:
+            if found == True:
+                break
+            for idx, message in enumerate(messages):
                 try:
-                    if "Do not give this code" in message.message:
-                        print(f"From : {message.message}")
-                        print(dialog)
-                        print(message)
-                except:
+                    if "Do not give this code" in message.message and message.date > delta:                        
+                        message_data = message.message
+                        found = True
+                        break
+                except Exception as e:
+                    logger.error(f"Error : {e}")
                     continue
+        
+        code = message_data[12:][:5]
+        return code
     async def fetch_participants(self, group: TeleGroup):
         members = []
         logger.info("Proses ambil data user dari group")
@@ -153,8 +181,8 @@ class ScraperBot():
                 
                 users_to_add = InputPeerUser(member[0], member[1])
                 # print(f"Users are : {users_to_add}")
-                await self.client(InviteToChannelRequest(group_id, [users_to_add]))
-                # await self.client(InviteToChannelRequest(group_id, [users_to_add]))
+                data = await self.client(InviteToChannelRequest(group_id, [users_to_add]))
+                print(data)
                 logger.info("Waiting for 5-10 seconds")
                 sleep(random.randrange(5, 10))
                 logger.info("Done inviting users")
@@ -175,11 +203,16 @@ class ScraperBot():
         members = await self.fetch_participants(group)
         result = await self.start_add_users(group, members)
         return result
-    
+
+
+class SubScraperBot(ScraperBot):
+    def __init__(self):
+        super().__init__()
+        self.is_child = True
 async def get_scraper():
     bot = ScraperBot()
-    await bot.create_client()
-    return bot   
+    auth = await bot.create_client()
+    return bot, auth
 
 # client = TelegramClient(PHONE_NUM, API_ID, API_HASH)
 
