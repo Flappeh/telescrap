@@ -4,9 +4,9 @@ from telethon.tl.types import InputPeerEmpty, InputPeerChannel, InputPeerUser, C
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 from telethon.tl.functions.channels import InviteToChannelRequest
 import pytz
-from .Database import TeleGroup
+from .Database import TeleGroup, TeleMember
 import random
-from modules.Utils import get_logger, update_groups,  get_group_details, get_saved_dest, get_tele_account, release_tele_account, get_main_tele_account
+from modules.Utils import insert_members, get_logger, update_groups,  get_group_details, get_saved_dest, get_tele_account, release_tele_account, get_main_tele_account
 import asyncio
 from time import sleep
 from datetime import datetime, timedelta
@@ -146,16 +146,24 @@ class ScraperBot():
         
         code = message_data[12:][:5]
         return code
-    async def fetch_participants(self, group: TeleGroup):
+    
+    async def fetch_and_store_members(self, group: TeleGroup):
         members = []
         logger.info("Proses ambil data user dari group")
         data = await self.client.get_participants(group.id,aggressive=True)
         for i in data:
             try:
-                members.append((i.id,i.access_hash))
+                member = {
+                    "username" : i.username if i.username != "" else "",
+                    "user_id" : i.id,
+                    "access_hash" : i.access_hash,
+                    "group" : group.title,
+                    "group_id" : group.id
+                }
+                members.append(member)
             except:
                 continue
-        return members      
+        insert_members(members)      
     
     async def start_add_users(self,group,members):
         logger.info("Mulai menambah user ke group")
@@ -200,15 +208,15 @@ class ScraperBot():
                 
     async def start_scrape_group(self, group: TeleGroup):
         logger.info(f"Mulai proses scrape group data untuk group : {group.title}")
-        members = await self.fetch_participants(group)
-        result = await self.start_add_users(group, members)
+        await self.fetch_and_store_members(group)
+        result = await self.start_add_users(group)
         return result
-
-
+    
 class SubScraperBot(ScraperBot):
     def __init__(self):
         super().__init__()
         self.is_child = True
+    
 async def get_scraper():
     bot = ScraperBot()
     auth = await bot.create_client()

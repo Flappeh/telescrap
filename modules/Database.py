@@ -22,6 +22,7 @@ class TeleAccount(Model):
     API_HASH = CharField(unique=True)
     PHONE_NUM = CharField()
     is_active = BooleanField(default=False)
+    logged_in = BooleanField(default=False)
     
     class Meta:
         database = db

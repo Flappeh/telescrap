@@ -29,17 +29,17 @@ class TelegramBot():
             return True
         return False
     
-    async def get_message_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if self.check_time(update):
-            return
-        if self.scraper == None:
-            self.scraper, auth = await get_scraper()
-            if auth.status != "done":
-                await update.message.reply_text("User hasn't logged in yet, please setup using /setup")
-                return ConversationHandler.END
-        await self.scraper.get_telegram_message()
-        del self.scraper
-        await update.message.reply_text("Done",parse_mode=ParseMode.MARKDOWN_V2)
+    # async def get_message_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    #     if self.check_time(update):
+    #         return
+    #     if self.scraper == None:
+    #         self.scraper, auth = await get_scraper()
+    #         if auth.status != "done":
+    #             await update.message.reply_text("User hasn't logged in yet, please setup using /setup")
+    #             return ConversationHandler.END
+    #     await self.scraper.get_telegram_message()
+    #     del self.scraper
+    #     await update.message.reply_text("Done",parse_mode=ParseMode.MARKDOWN_V2)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if self.check_time(update):
@@ -335,7 +335,7 @@ Command yang dapat dilakukan:
         # Command
         app.add_handler(CommandHandler('start', self.start_command))
         app.add_handler(CommandHandler('help', self.help_command))
-        app.add_handler(CommandHandler('test', self.get_message_command))
+        # app.add_handler(CommandHandler('test', self.get_message_command))
         app.add_handler(conv_handler)
         app.add_handler(scrape_conv_handler)
         # Messages

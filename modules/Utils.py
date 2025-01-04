@@ -4,6 +4,10 @@ import logging
 import sys
 from .Database import TeleGroup, TeleMember, TeleAccount
 import yaml
+from telethon import TelegramClient
+import telethon.errors as tele_error
+from typing import List
+from multiprocessing import Process
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 DATA_LOCATION = './log/'
@@ -45,6 +49,20 @@ def get_logger(name=None):
 
 logger = get_logger(__name__)
 
+def insert_members(members):
+    try:
+        logger.debug("Removing old members from db")
+        TeleMember.truncate_table()
+    except:
+        logger.error("Error removing old data from members table")
+        return
+    
+    try:
+        logger.debug("Inserting member data to database")
+        TeleMember.insert_many(members, fields=[TeleMember.username, TeleMember.user_id, TeleMember.access_hash, TeleMember.group, TeleMember.group_id]).execute()
+    except Exception as e:
+        logger.error(f"Error inserting member data to database, message : {e}")
+        
 def update_groups(list):
     try:
         logger.debug("Removing old groups")
@@ -124,7 +142,8 @@ def get_tele_account() -> TeleAccount:
     try:
         logger.debug("Getting new account from db")
         acc :TeleAccount = TeleAccount.get(
-            TeleAccount.is_active == False
+            TeleAccount.is_active == False,
+            TeleAccount.logged_in == True
         )
         if acc == None:
             raise
@@ -156,9 +175,9 @@ def release_tele_account(API_ID : str):
     except:
         logger.error(f"Error releasing account {API_ID}")
         
-def init_tele_accounts():
+def add_accounts_to_db():
     try:
-        logger.info("Initializing telegram accounts from config")
+        logger.info("Importing telegram accounts from config")
         
         with open("./data/config.yaml", "r") as f:
             config = yaml.safe_load(f)
@@ -179,9 +198,87 @@ def init_tele_accounts():
                     API_HASH = api_hash,
                     PHONE_NUM = phone_num
                 )
+        logger.info("Finished importing telegram accounts from config")
+        
     except Exception as e:
         logger.error("Error Initializing telegram accounts")
         print(e)
 
+def confirm_telegram_login():
+    confirm = input("Apakah ingin login untuk akun ini (y/n)")
+    if confirm.lower() != 'y' and confirm.lower() != 'n':
+        print("Mohon konfirmasi dengan mengirimkan 'y' atau 'n'")
+        confirm_telegram_login()
+    if confirm.lower() == 'y':
+        return True
+    return False
+
+def telegram_initialize_login(account: TeleAccount, tries: int = 0):
+    try:
+        if tries == 3:
+            raise ValueError("Percobaan login melebihi batas maximum. Nomor akan dilewati")
+        logger.info(f"Mulai login untuk nomor : {account.PHONE_NUM}")
+        if confirm_telegram_login():
+            client = TelegramClient(account.PHONE_NUM, account.API_ID, account.API_HASH)
+            client.connect()
+            if not client.is_user_authorized():
+                client.send_code_request(account.PHONE_NUM)
+                # os.system('clear')
+                client.sign_in(account.PHONE_NUM, input("Masukan kode yang dikirim : "))
+                account.logged_in = True
+                account.save()
+            else:
+                logger.info("Akun sudah ter logged-in")
+                account.logged_in = True
+                account.save()
+            del client
+            return True
+        else:
+            logger.info(f"Skipping phone number: {account.PHONE_NUM}")
+            return False
+    
+    except tele_error.PhoneCodeInvalidError as e:
+        tries += 1
+        logger.error(f"Kode yang di enter invalid, mohon coba kembali.")
+        telegram_initialize_login(account, tries)
+    
+    except tele_error.FloodWaitError as e:
+        logger.error(f"Terdapat error flood untuk nomor ini. Details {e} ")
+        
+    except Exception as e:
+        logger.error(f"Error encountered when logging in account. Type: {e.__class__.__name__}, Message: {e}")
+        return False
+    
+def get_all_db_accounts() -> List[TeleAccount]:
+    try:
+        logger.debug("Getting all stored accounts data")
+        data = [account for account in TeleAccount.select()]
+        return data
+    except:
+        logger.error("Error getting accounts from database, exiting now...")
+        sys.exit()
+        
+
+def login_tele_accounts():
+    try:
+        logger.info("Logging into telegram accounts")
+        main_acc = get_main_tele_account()
+        accounts = get_all_db_accounts()
+        accounts.append(TeleAccount(
+            API_ID = main_acc[0],
+            API_HASH = main_acc[1],
+            PHONE_NUM = main_acc[2]
+        ))
+        verif_count = 0
+        for acc in accounts:
+            done = telegram_initialize_login(acc)
+            if done:
+                verif_count += 1
+        logger.info(f"Setup account selesai, jumlah akun yang telah login : {verif_count}")
+    except Exception as e:
+        logger.error(f"Error encountered when logging into telegram accounts, exiting now. message {e}")
+        sys.exit()
+
 def init_program():
-    init_tele_accounts()
+    add_accounts_to_db()
+    login_tele_accounts()
