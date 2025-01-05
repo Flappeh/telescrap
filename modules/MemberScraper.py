@@ -4,10 +4,12 @@ from telethon.tl.types import InputPeerEmpty, InputPeerChannel, InputPeerUser, C
 from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
 from telethon.tl.functions.channels import InviteToChannelRequest
 import pytz
-from .Database import TeleGroup, TeleMember
+from modules.database import TeleGroup, TeleMember
 import random
-from modules.Utils import insert_members, get_logger, update_groups,  get_group_details, get_saved_dest, get_tele_account, release_tele_account, get_main_tele_account
+from modules.utils.common import get_logger
+from modules.utils import utils
 import asyncio
+from modules.environment import API_HASH, API_ID
 from time import sleep
 from datetime import datetime, timedelta
 
@@ -30,8 +32,8 @@ class ScraperAuth():
 
 class ScraperBot():
     def __init__(self):
-        self.API_ID = ""
-        self.API_HASH = ""
+        self.API_ID = API_ID
+        self.API_HASH = API_HASH
         self.PHONE_NUM = ""
         self.is_child = False
         self.client : TelegramClient = None
@@ -40,18 +42,14 @@ class ScraperBot():
         self.init_account()
         
     def __del__(self):
-        release_tele_account(self.API_ID)
+        utils.release_tele_account(self.PHONE_NUM)
         
     def init_account(self):
         if self.is_child == False:
-            data = get_main_tele_account()
-            self.API_ID = data[0]
-            self.API_HASH = data[1]
-            self.PHONE_NUM = data[2]
+            data = utils.get_main_tele_account()
+            self.PHONE_NUM = data
         else:
-            account = get_tele_account()
-            self.API_ID = account.API_ID
-            self.API_HASH = account.API_HASH
+            account = utils.get_tele_account()
             self.PHONE_NUM = account.PHONE_NUM
     
     async def login_client(self, data: ScraperAuth):
@@ -66,12 +64,12 @@ class ScraperBot():
             return False
     
     async def create_client(self):
-        self.client = TelegramClient(self.PHONE_NUM, self.API_ID, self.API_HASH)
+        self.client = TelegramClient(f"data/sessions/{self.PHONE_NUM}", self.API_ID, self.API_HASH)
         await self.client.connect()
         if not await self.client.is_user_authorized():
             logger.debug("Client not logged in yet")
             if self.sent_code == False:
-                code_req = await asyncio.wait_for(self.client.send_code_request(self.PHONE_NUM),10)
+                code_req = await self.client.send_code_request(self.PHONE_NUM)
                 self.auth_data.code_hash = code_req.phone_code_hash
                 self.sent_code = True
                 self.auth_data.status = "sent_code"
@@ -80,7 +78,7 @@ class ScraperBot():
         return self.auth_data
     
     async def get_group_details(self, idx) -> TeleGroup:
-        data = get_group_details(idx)
+        data = utils.get_group_details(idx)
         return data
     
     async def get_groups_data(self):
@@ -107,7 +105,7 @@ class ScraperBot():
         return groups
     
     async def check_saved_dest(self):
-        data = get_saved_dest()
+        data = utils.get_saved_dest()
         return data
     
     async def get_groups_list(self):
@@ -121,40 +119,17 @@ class ScraperBot():
         return response
  
     async def update_db_groups(self, groups):
-        update_groups(groups)
+        utils.update_groups(groups)
     
-    async def get_telegram_message(self):
-        # entity = await self.client.get_entity("777000")
-        # async for message in self.client.iter_messages(entity, limit=200):
-        #     print(message.text)
-        found = False
-        delta = utc.localize(datetime.now()) - timedelta(hours=7,minutes=15)
-        message_data = ""
-        async for dialog in self.client.iter_dialogs(limit=100):
-            messages = await self.client.get_messages(dialog.entity, limit=10)
-            if found == True:
-                break
-            for idx, message in enumerate(messages):
-                try:
-                    if "Do not give this code" in message.message and message.date > delta:                        
-                        message_data = message.message
-                        found = True
-                        break
-                except Exception as e:
-                    logger.error(f"Error : {e}")
-                    continue
-        
-        code = message_data[12:][:5]
-        return code
     
-    async def fetch_and_store_members(self, group: TeleGroup):
+    async def fetch_and_store_members(self, group):
         members = []
         logger.info("Proses ambil data user dari group")
-        data = await self.client.get_participants(group.id,aggressive=True)
+        data = await self.client.get_participants(group,aggressive=False)
         for i in data:
             try:
                 member = {
-                    "username" : i.username if i.username != "" else "",
+                    "username" : i.username if i.username else "",
                     "user_id" : i.id,
                     "access_hash" : i.access_hash,
                     "group" : group.title,
@@ -163,54 +138,9 @@ class ScraperBot():
                 members.append(member)
             except:
                 continue
-        insert_members(members)      
+        return members     
     
-    async def start_add_users(self,group,members):
-        logger.info("Mulai menambah user ke group")
-        n = 0
-        group_id = group.id
-        # for idx in range(0,len(members)-1,5):
-        for member in members:
-            n += 1
-            if n == 10:
-                break
-            if n % 50 == 0:
-                sleep(1)
-            try:
-                # users_to_add = []
-                # stop = idx + 5 
-                # if len(members) < stop:
-                #     stop = len(members)
-                # print(f"Stop : {stop}")
                 
-                # while idx < stop:
-                #     users_to_add.append(InputPeerUser(members[idx][0], members[idx][1]))
-                #     idx+=1
-                
-                users_to_add = InputPeerUser(member[0], member[1])
-                # print(f"Users are : {users_to_add}")
-                data = await self.client(InviteToChannelRequest(group_id, [users_to_add]))
-                print(data)
-                logger.info("Waiting for 5-10 seconds")
-                sleep(random.randrange(5, 10))
-                logger.info("Done inviting users")
-            except PeerFloodError:
-                logger.error("[!] Getting Flood Error from telegram. \n[!] Script is stopping now. \n[!] Please try again after some time.")
-                return "flood_error"
-            except UserPrivacyRestrictedError:
-                logger.error("[!] The user's privacy settings do not allow you to do this. Skipping.")
-                continue
-            except Exception as e:
-                logger.error(f"[!] Unexpected Error, {e}")
-                continue
-        logger.info("Done adding users")
-        return "done"
-                
-    async def start_scrape_group(self, group: TeleGroup):
-        logger.info(f"Mulai proses scrape group data untuk group : {group.title}")
-        await self.fetch_and_store_members(group)
-        result = await self.start_add_users(group)
-        return result
     
 class SubScraperBot(ScraperBot):
     def __init__(self):

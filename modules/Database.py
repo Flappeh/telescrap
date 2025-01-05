@@ -8,27 +8,25 @@ DIRNAME = os.getcwd()
 db = SqliteQueueDatabase(DIRNAME + '/data/database.db')
 
 class TeleGroup(Model):
-    order = IntegerField()
-    id = IntegerField()
+    url = CharField()
     title = CharField()
-    access_hash = IntegerField()
+    private = BooleanField(default=False)
     is_destination = BooleanField(default=False)
     
     class Meta:
         database = db
 
 class TeleAccount(Model):
-    API_ID = CharField(unique=True)
-    API_HASH = CharField(unique=True)
     PHONE_NUM = CharField()
     is_active = BooleanField(default=False)
     logged_in = BooleanField(default=False)
+    is_main = BooleanField(default=False)
     
     class Meta:
         database = db
     
 class TeleMember(Model):
-    username = CharField(default="")
+    username = CharField()
     user_id = CharField()
     access_hash = CharField()
     group = CharField()
